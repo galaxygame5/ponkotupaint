@@ -1,0 +1,1590 @@
+<!DOCTYPE html>
+<html lang="ja" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>みんなでぽんこつペイント Online</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        polarDark: '#0b1329',
+                        polarGlass: 'rgba(15, 23, 42, 0.85)',
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <!-- PeerJS for P2P Online -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&family=Zen+Maru+Gothic:wght@500;700;900&display=swap');
+        
+        body {
+            font-family: 'Zen Maru Gothic', 'Plus Jakarta Sans', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #311042 100%);
+            color: #f0f9ff;
+            user-select: none;
+            touch-action: manipulation;
+            min-height: 100vh;
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(168, 85, 247, 0.2);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        @keyframes fadeInScale {
+            0% { opacity: 0; transform: scale(0.85); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        .animate-pop {
+            animation: fadeInScale 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        canvas {
+            touch-action: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen text-slate-100 flex flex-col justify-between overflow-x-hidden">
+
+    <!-- Header / Navbar -->
+    <header class="w-full p-4 md:p-5 glass-panel sticky top-0 z-40 border-b border-purple-500/20 flex justify-between items-center">
+        <div class="flex items-center space-x-3 cursor-pointer" onclick="location.reload()">
+            <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/30 border border-purple-200/30">
+                <span class="text-3xl">🎨</span>
+            </div>
+            <div>
+                <h1 class="font-black text-2xl md:text-3xl tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-purple-300 via-pink-200 to-indigo-400">
+                    ぽんこつペイント Online
+                </h1>
+                <p class="text-xs text-purple-300/70 font-mono tracking-widest uppercase">Ponkotsu Paint - Party Edition</p>
+            </div>
+        </div>
+
+        <div id="headerInfo" class="hidden flex items-center space-x-3">
+            <div id="roomBadge" class="bg-slate-900/80 border border-purple-500/30 px-4 py-2 rounded-full text-sm font-mono font-bold text-purple-300 flex items-center gap-2 cursor-pointer hover:bg-slate-800 transition" onclick="copyRoomCode()">
+                <i class="fa-regular fa-copy"></i>
+                <span id="displayRoomCode">----</span>
+            </div>
+            <button id="soundToggleBtn" onclick="toggleSound()" class="w-11 h-11 rounded-full bg-slate-800/80 hover:bg-slate-700 border border-purple-500/30 flex items-center justify-center text-purple-300 text-lg transition">
+                <i class="fa-solid fa-volume-high" id="soundIcon"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="container mx-auto px-4 py-6 max-w-6xl flex-grow flex flex-col justify-center">
+
+        <!-- VIEW 1: LOBBY -->
+        <div id="viewLobby" class="space-y-6 max-w-2xl mx-auto w-full">
+            <div class="text-center space-y-3 my-2">
+                <div class="inline-block px-4 py-1.5 bg-purple-500/20 text-purple-300 rounded-full text-sm font-bold border border-purple-400/30 mb-1 shadow-lg backdrop-blur-md">
+                    ◯と｜だけでお絵かき！ (厳選250題) 🎨
+                </div>
+                <h2 class="text-3xl md:text-5xl font-black text-white tracking-tight">みんなでぽんこつペイント</h2>
+                <p class="text-purple-200/80 text-sm md:text-base max-w-lg mx-auto">
+                    使えるのは「直線」と「正円」だけ！<br>画数が少ない人から回答者に見せられる駆け引きお絵かきゲーム！
+                </p>
+            </div>
+
+            <div class="glass-panel rounded-3xl p-6 shadow-2xl space-y-3">
+                <label class="block text-sm font-bold uppercase tracking-wider text-purple-200">プレイヤー名（ニックネーム）</label>
+                <input type="text" id="playerNameInput" maxlength="10" placeholder="名前を入力してください" 
+                    class="w-full bg-slate-950/80 border border-purple-500/40 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-purple-300 transition font-bold text-xl placeholder-slate-600">
+            </div>
+
+            <div class="glass-panel rounded-3xl p-6 shadow-2xl space-y-3">
+                <label class="block text-sm font-bold uppercase tracking-wider text-purple-200">合言葉（部屋のパスワード）</label>
+                <input type="text" id="joinRoomCodeInput" placeholder="お好きな合言葉 (例: ponkotsu1)" 
+                    class="w-full bg-slate-950/80 border border-purple-500/40 rounded-2xl px-5 py-4 text-white font-mono tracking-widest text-xl focus:outline-none focus:border-purple-300 transition placeholder-slate-600">
+                <p class="text-xs text-purple-300/60">※全員が同じ合言葉を入力してください (2〜8人推奨)。</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="glass-panel rounded-3xl p-6 shadow-2xl hover:border-purple-400/60 transition flex flex-col justify-between space-y-4">
+                    <div>
+                        <div class="w-12 h-12 rounded-2xl bg-purple-500/20 text-purple-300 flex items-center justify-center text-2xl mb-2 border border-purple-400/30">
+                            <i class="fa-solid fa-plus"></i>
+                        </div>
+                        <h3 class="font-bold text-xl text-white">部屋を作る (ホスト)</h3>
+                    </div>
+                    <button id="btnCreateRoom" class="w-full bg-gradient-to-r from-purple-500 via-indigo-500 to-pink-600 hover:from-purple-400 hover:to-pink-500 text-white font-black text-lg py-4 rounded-2xl shadow-lg shadow-purple-500/20 transition transform active:scale-95">
+                        部屋を作成
+                    </button>
+                </div>
+
+                <div class="glass-panel rounded-3xl p-6 shadow-2xl hover:border-indigo-400/60 transition flex flex-col justify-between space-y-4">
+                    <div>
+                        <div class="w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center text-2xl mb-2 border border-indigo-400/30">
+                            <i class="fa-solid fa-right-to-bracket"></i>
+                        </div>
+                        <h3 class="font-bold text-xl text-white">部屋に入る (ゲスト)</h3>
+                    </div>
+                    <button id="btnJoinRoom" class="w-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-600 hover:from-indigo-400 hover:to-purple-500 text-white font-black text-lg py-4 rounded-2xl shadow-lg shadow-indigo-500/20 transition transform active:scale-95">
+                        部屋に参加
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW 2: WAITING LOBBY -->
+        <div id="viewRoomLobby" class="hidden space-y-5 max-w-2xl mx-auto w-full">
+            <div class="glass-panel rounded-3xl p-6 md:p-8 shadow-2xl space-y-6">
+                <div class="flex justify-between items-center border-b border-purple-500/20 pb-4">
+                    <div>
+                        <span class="text-xs font-bold text-purple-400 tracking-wider uppercase">GAME LOBBY</span>
+                        <h2 class="text-3xl font-black text-white flex items-center gap-2">
+                            合言葉: <span id="lobbyRoomCode" class="font-mono text-purple-300">----</span>
+                        </h2>
+                    </div>
+                    <button onclick="copyRoomCode()" class="bg-slate-800/80 hover:bg-slate-700 text-purple-300 text-sm font-bold px-4 py-2.5 rounded-2xl border border-purple-500/30 flex items-center gap-2 transition">
+                        <i class="fa-regular fa-copy"></i> コピー
+                    </button>
+                </div>
+
+                <!-- ホスト専用：ルール設定（制限時間設定） -->
+                <div id="hostSettingsBox" class="hidden bg-slate-950/80 rounded-2xl p-4 border border-purple-500/30 space-y-2">
+                    <label class="block text-xs font-bold text-purple-300 uppercase tracking-wider">お絵かき制限時間（1ラウンドあたり）</label>
+                    <select id="timeLimitSelect" onchange="updateTimeLimitSetting(this.value)" class="w-full bg-slate-900 border border-purple-500/40 rounded-xl px-4 py-2.5 text-white font-bold focus:outline-none">
+                        <option value="60" selected>制限時間：1分 (おすすめ)</option>
+                        <option value="90">制限時間：1分半</option>
+                        <option value="120">制限時間：2分</option>
+                        <option value="0">制限時間：なし (無制限)</option>
+                    </select>
+                </div>
+
+                <div class="bg-slate-950/60 rounded-2xl p-4 border border-purple-500/20 text-center text-sm text-purple-100 space-y-1">
+                    <div>基本ルール：<strong class="text-purple-300">【直線】</strong>と<strong class="text-purple-300">【正円】</strong>だけでお題を描こう！</div>
+                    <div class="text-xs text-purple-300/70">画数（線＋丸の数）が少ない人から順番に回答者に見てもらえます。</div>
+                </div>
+
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center text-sm font-bold text-purple-200">
+                        <span>参加プレイヤー (<span id="playerCount">0</span>名)</span>
+                        <span class="text-purple-400/70">※2人以上で対戦可能</span>
+                    </div>
+                    <div id="playerList" class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1"></div>
+                </div>
+
+                <div class="pt-2">
+                    <button id="startGameBtn" onclick="startGame()" class="hidden w-full bg-gradient-to-r from-purple-400 via-pink-500 to-indigo-600 hover:from-purple-300 hover:to-indigo-400 text-white font-black text-xl py-5 rounded-2xl shadow-xl shadow-purple-500/30 transition transform active:scale-95">
+                        ゲームを開始する 🚀
+                    </button>
+                    <p id="waitingForHostMsg" class="text-center text-purple-300/70 text-sm py-2 font-medium animate-pulse">
+                        ホストが対戦を開始するのを待っています...
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW 3: GAME PLAYING -->
+        <div id="viewGame" class="hidden space-y-5 w-full max-w-5xl mx-auto">
+            <!-- Header Info Status -->
+            <div class="glass-panel p-4 rounded-3xl border border-purple-500/20 space-y-3">
+                <div class="flex flex-wrap justify-between items-center gap-4">
+                    <div class="flex items-center space-x-4">
+                        <div class="bg-purple-500/20 text-purple-300 px-4 py-2 rounded-2xl border border-purple-400/40 text-sm font-mono font-bold shadow">
+                            ROUND <span id="roundNumber">1</span> / <span id="maxRounds">0</span>
+                        </div>
+                        <div>
+                            <span class="text-xs text-purple-300/70 block uppercase font-bold">あなたの役職</span>
+                            <span id="myRoleBadge" class="font-black text-lg text-white">----</span>
+                        </div>
+                    </div>
+
+                    <!-- Timer Indicator -->
+                    <div id="timerContainer" class="hidden items-center space-x-2 bg-slate-900/90 border border-purple-500/30 px-4 py-2 rounded-2xl">
+                        <i class="fa-solid fa-stopwatch text-amber-400 text-lg"></i>
+                        <span id="timerDisplay" class="font-mono text-xl font-black text-amber-300">01:00</span>
+                    </div>
+                </div>
+
+                <!-- Scores Summary (見やすく大型化) -->
+                <div class="border-t border-purple-500/20 pt-3">
+                    <div class="text-[11px] font-bold text-purple-300 uppercase tracking-wider mb-2">現在の獲得スコア</div>
+                    <div id="headerScoreList" class="flex flex-wrap gap-2.5"></div>
+                </div>
+            </div>
+
+            <!-- Question / Phase Banner -->
+            <div id="topicCard" class="glass-panel rounded-3xl p-5 text-center shadow-2xl border border-purple-500/30 bg-slate-950/70 space-y-3">
+                <div class="flex justify-between items-center px-2">
+                    <span id="topicSubtitle" class="text-xs font-bold text-purple-400 tracking-wider uppercase">今回のお題</span>
+                    <!-- お題チェンジボタン（描き手専用） -->
+                    <button id="btnChangeTopic" onclick="requestTopicChange()" class="hidden bg-slate-800 hover:bg-slate-700 border border-purple-500/40 text-purple-300 text-xs font-bold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-arrows-rotate"></i> お題チェンジ (<span id="topicChangeVoteCount">0/0</span>)
+                    </button>
+                </div>
+                <h2 id="questionTopic" class="text-2xl md:text-4xl font-black text-white">「------」</h2>
+                <p id="topicGuide" class="text-xs text-purple-300/70 font-medium"></p>
+            </div>
+
+            <!-- SUB-VIEW A: DRAWING PHASE (描き手用) -->
+            <div id="subViewDraw" class="hidden space-y-4">
+                <div class="glass-panel p-4 md:p-6 rounded-3xl border border-purple-500/30 space-y-4">
+                    <div class="flex flex-wrap justify-between items-center border-b border-purple-500/20 pb-3 gap-2">
+                        <!-- Tools Selection -->
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold text-purple-300">ツール:</span>
+                            <button id="toolLineBtn" onclick="setTool('line')" class="bg-purple-600 text-white font-bold px-4 py-2 rounded-xl text-sm border border-purple-400/50 shadow flex items-center gap-1.5 transition">
+                                <i class="fa-solid fa-slash"></i> 直線
+                            </button>
+                            <button id="toolCircleBtn" onclick="setTool('circle')" class="bg-slate-800 text-purple-300 hover:bg-slate-700 font-bold px-4 py-2 rounded-xl text-sm border border-purple-500/30 transition flex items-center gap-1.5">
+                                <i class="fa-regular fa-circle"></i> 正円
+                            </button>
+                        </div>
+
+                        <!-- Actions -->
+                        <div class="flex items-center gap-2">
+                            <button onclick="undoCanvas()" class="text-xs bg-slate-800 hover:bg-slate-700 text-purple-300 px-3 py-2 rounded-xl border border-purple-500/30 transition flex items-center gap-1">
+                                <i class="fa-solid fa-rotate-left"></i> 元に戻す
+                            </button>
+                            <button onclick="clearCanvas()" class="text-xs bg-slate-800 hover:bg-slate-700 text-rose-300 px-3 py-2 rounded-xl border border-rose-500/30 transition flex items-center gap-1">
+                                <i class="fa-solid fa-trash"></i> 全消去
+                            </button>
+                            <div class="bg-purple-500/20 border border-purple-400/30 px-3 py-1.5 rounded-xl font-bold text-sm text-purple-300">
+                                画数: <span id="strokeCountDisplay" class="text-xl text-yellow-300 font-black">0</span> 画
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Canvas Box (720x540) -->
+                    <div class="flex justify-center items-center w-full">
+                        <div class="relative w-full max-w-3xl aspect-[4/3] bg-slate-950 border-2 border-purple-500/40 rounded-3xl overflow-hidden shadow-2xl cursor-crosshair">
+                            <canvas id="drawCanvas" width="720" height="540" class="w-full h-full block"></canvas>
+                        </div>
+                    </div>
+
+                    <button id="submitDrawBtn" onclick="submitDrawing()" class="w-full max-w-lg mx-auto block bg-gradient-to-r from-purple-500 via-pink-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 text-white font-black text-xl py-5 rounded-2xl shadow-xl shadow-purple-500/30 transition transform active:scale-95">
+                        この絵で確定して提出する 🎨
+                    </button>
+                </div>
+
+                <div class="glass-panel p-4 rounded-3xl border border-purple-500/20">
+                    <h5 class="text-xs font-bold text-purple-300 mb-2">描き手の提出状況</h5>
+                    <div id="drawStatusList" class="flex flex-wrap gap-2"></div>
+                </div>
+            </div>
+
+            <!-- SUB-VIEW B: ANSWERER WAITING PHASE -->
+            <div id="subViewAnswererWait" class="hidden text-center glass-panel p-10 rounded-3xl border border-purple-500/30 space-y-4">
+                <div class="text-6xl animate-bounce">🎨</div>
+                <h3 class="text-2xl font-black text-white">描き手がお絵かき中...</h3>
+                <p class="text-sm text-purple-300/80">画面は見ずに少々お待ちください。全員描き終わると順に発表されます！</p>
+                <div id="answererStatusList" class="flex justify-center flex-wrap gap-2 pt-4"></div>
+            </div>
+
+            <!-- SUB-VIEW C: PRESENTATION & GUESSING PHASE -->
+            <div id="subViewPresentation" class="hidden space-y-6">
+                <div class="glass-panel p-6 rounded-3xl border border-purple-500/30 space-y-6 text-center">
+                    <div class="space-y-1">
+                        <span id="presTurnBadge" class="inline-block px-4 py-1 bg-yellow-500/20 text-yellow-300 border border-yellow-400/40 font-bold text-sm rounded-full">
+                            1枚目の発表
+                        </span>
+                        <h3 id="presAuthorName" class="text-2xl md:text-3xl font-black text-white">
+                            ◯◯ さんの作品（画数: 0画）
+                        </h3>
+                    </div>
+
+                    <!-- Display Canvas / Image -->
+                    <div class="flex justify-center">
+                        <div class="w-full max-w-2xl aspect-[4/3] bg-slate-950 border-2 border-purple-500/40 rounded-3xl overflow-hidden shadow-2xl flex items-center justify-center p-2">
+                            <img id="presImageDisplay" src="" class="w-full h-full object-contain">
+                        </div>
+                    </div>
+
+                    <!-- Judge Controls (描き手本人専用) -->
+                    <div id="authorJudgeControls" class="hidden max-w-md mx-auto space-y-3 bg-slate-900/90 p-5 rounded-2xl border border-purple-500/30 shadow-xl">
+                        <span class="text-sm font-bold text-yellow-300 block">【作者判定パネル】回答者の回答を判定してください</span>
+                        <div class="grid grid-cols-2 gap-3">
+                            <button onclick="judgeCurrentDrawing(false)" class="bg-rose-600 hover:bg-rose-500 text-white font-bold py-3.5 rounded-xl shadow transition flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-xmark"></i> 不正解...
+                            </button>
+                            <button onclick="judgeCurrentDrawing(true)" class="bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 rounded-xl shadow transition flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-circle-check"></i> 正解！🎯
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Message for others -->
+                    <div id="spectatorJudgeMsg" class="hidden text-sm font-bold text-purple-300/80 animate-pulse">
+                        回答者の推測と、絵の作者の判定を待っています...
+                    </div>
+                </div>
+
+                <!-- Open History / Queue List -->
+                <div class="glass-panel p-4 rounded-3xl border border-purple-500/20 space-y-3">
+                    <h5 class="text-xs font-bold text-purple-300 uppercase tracking-wider">発表順一覧（画数が少ない順）</h5>
+                    <div id="presHistoryList" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"></div>
+                </div>
+            </div>
+
+            <!-- SUB-VIEW D: ROUND RESULT (振り返り・全員の絵鑑賞画面) -->
+            <div id="subViewRoundResult" class="hidden glass-panel p-6 md:p-8 rounded-3xl border border-purple-500/30 text-center space-y-6">
+                <div id="roundResultBanner" class="space-y-2"></div>
+
+                <!-- 自由鑑賞ギャラリービューアー -->
+                <div class="space-y-4 max-w-2xl mx-auto">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-bold text-purple-300 uppercase tracking-wider">提出作品の鑑賞ギャラリー</span>
+                        <span id="resultViewerIndexText" class="text-xs font-mono font-bold text-amber-300">1 / 1</span>
+                    </div>
+
+                    <div class="relative flex items-center justify-center">
+                        <!-- 前へボタン -->
+                        <button onclick="navigateResultImage(-1)" class="absolute left-2 z-10 w-11 h-11 rounded-full bg-slate-900/90 hover:bg-slate-800 text-purple-300 border border-purple-500/40 flex items-center justify-center text-xl shadow-lg transition">
+                            <i class="fa-solid fa-chevron-left"></i>
+                        </button>
+
+                        <!-- 絵の表示エリア -->
+                        <div class="w-full aspect-[4/3] bg-slate-950 border-2 border-purple-500/40 rounded-3xl overflow-hidden p-2 shadow-2xl flex flex-col items-center justify-center relative">
+                            <img id="resultImageDisplay" src="" class="w-full h-full object-contain">
+                            <div id="resultImageBadge" class="absolute bottom-4 left-4 right-4 bg-slate-900/90 backdrop-blur border border-purple-500/30 px-4 py-2 rounded-xl text-sm font-bold text-white flex justify-between items-center shadow-lg">
+                                <span id="resultAuthorName">--</span>
+                                <span id="resultStrokeCount" class="text-amber-300 font-mono">0画</span>
+                            </div>
+                        </div>
+
+                        <!-- 次へボタン -->
+                        <button onclick="navigateResultImage(1)" class="absolute right-2 z-10 w-11 h-11 rounded-full bg-slate-900/90 hover:bg-slate-800 text-purple-300 border border-purple-500/40 flex items-center justify-center text-xl shadow-lg transition">
+                            <i class="fa-solid fa-chevron-right"></i>
+                        </button>
+                    </div>
+
+                    <!-- 作品サムネイル一覧 -->
+                    <div id="resultThumbnailList" class="flex justify-center gap-2 overflow-x-auto py-1"></div>
+                </div>
+
+                <!-- ホスト専用：「次の問題へ進む」ボタン -->
+                <div id="hostNextRoundControls" class="hidden max-w-md mx-auto pt-2">
+                    <button onclick="proceedToNextRound()" class="w-full bg-gradient-to-r from-purple-500 via-pink-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 text-white font-black text-xl py-4 rounded-2xl shadow-xl transition transform active:scale-95">
+                        次の問題へ進む ➔
+                    </button>
+                </div>
+                <p id="clientNextRoundMsg" class="hidden text-sm text-purple-300/70 animate-pulse">
+                    ホストが次の問題へ進めるのを待っています...
+                </p>
+            </div>
+
+            <!-- Action Log -->
+            <div class="glass-panel p-4 rounded-3xl border border-purple-500/20 space-y-2">
+                <div class="border-b border-purple-500/20 pb-2">
+                    <span class="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-clock-rotate-left"></i> 対戦ログ
+                    </span>
+                </div>
+                <div id="actionLogList" class="space-y-1 max-h-32 overflow-y-auto text-xs text-purple-100 font-medium pr-1"></div>
+            </div>
+        </div>
+
+        <!-- VIEW 4: GAME OVER -->
+        <div id="viewGameOver" class="hidden glass-panel rounded-3xl p-8 md:p-10 shadow-2xl text-center space-y-6 max-w-2xl mx-auto w-full border border-purple-500/30">
+            <div class="py-2 space-y-2">
+                <div class="w-20 h-20 rounded-3xl bg-amber-500/20 text-amber-300 flex items-center justify-center text-4xl mx-auto mb-2 border border-amber-400/30 shadow-lg">
+                    🏆
+                </div>
+                <h2 class="text-4xl font-black text-amber-300">ゲーム終了！</h2>
+                <p class="text-sm text-purple-200/70">全員の回答者ターンが終了しました！最終結果の発表です！</p>
+            </div>
+
+            <div class="space-y-3 bg-slate-950/80 p-5 rounded-3xl border border-purple-500/20 text-left">
+                <h4 class="text-xs font-bold text-purple-300 uppercase tracking-wider text-center">最終ランキング</h4>
+                <div id="finalScoreRanking" class="space-y-2"></div>
+            </div>
+
+            <div id="gameOverHostControls" class="hidden space-y-2 pt-2">
+                <button onclick="restartGame()" class="w-full bg-gradient-to-r from-purple-400 via-pink-500 to-indigo-600 hover:from-purple-300 hover:to-indigo-400 text-white font-black text-xl py-5 rounded-2xl shadow-xl transition transform active:scale-95">
+                    もう一度遊ぶ 🔄
+                </button>
+            </div>
+            <p id="gameOverClientMsg" class="hidden text-sm text-purple-300/70 animate-pulse">
+                ホストが次のゲームを準備中です...
+            </p>
+        </div>
+
+    </main>
+
+    <!-- NOTIFICATION MODAL -->
+    <div id="actionNoticeModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm pointer-events-none">
+        <div class="glass-panel max-w-sm w-full rounded-3xl p-6 border-2 border-purple-400 shadow-2xl text-center animate-pop space-y-3 bg-slate-900">
+            <div id="noticeIcon" class="text-4xl">📢</div>
+            <h3 id="noticeTitle" class="text-xl font-black text-white">通知</h3>
+            <p id="noticeBody" class="text-sm font-bold text-purple-300">内容</p>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="p-4 text-center text-xs text-purple-300/50 border-t border-purple-500/10">
+        &copy; みんなでぽんこつペイント Online
+    </footer>
+
+    <!-- GAME ENGINE & PEERJS SCRIPT -->
+    <script>
+        const PREFIX = "ponkotsu-paint-online-p2p-v8-";
+
+        // 分かりづらいお題を排した250題
+        const QUESTION_TOPICS = [
+            "かつら", "かまぼこ", "けんだま", "チェス", "納豆", "サイコロ", "ポニーテール", "駐車場", "高速道路", "金メダル", "ポスト", "釣り", "結婚式",
+            "太陽", "メガネ", "自転車", "雪だるま", "時計", "車", "リンゴ", "ドラえもん", "信号機", "サッカーボール", "飛行機",
+            "傘", "テレビ", "猫", "家", "ハンバーガー", "ラーメン", "富士山", "パンダ", "電球", "スイカ", "月", "風船",
+            "犬", "ペンギン", "ゾウ", "キリン", "ライオン", "ウサギ", "クマ", "コアラ", "カンガルー", "ワニ", "カメ", "カエル",
+            "ヘビ", "サル", "ゴリラ", "トラ", "ネズミ", "ハムスター", "リス", "フクロウ", "タカ", "カモメ", "スズメ", "カラス", "ハト",
+            "サメ", "クジラ", "イルカ", "カツオ", "マグロ", "タコ", "イカ", "エビ", "カニ", "クラゲ", "カキ", "ホタテ", "ヒトデ", "金魚",
+            "バラ", "チューリップ", "ヒマワリ", "サクラ", "タンポポ", "アジサイ", "サボテン", "キノコ", "ヤシの木", "竹", "紅葉",
+            "バナナ", "ミカン", "イチゴ", "メロン", "パイナップル", "ブドウ", "モモ", "ナシ", "レモン", "キウイ",
+            "トマト", "ナス", "キュウリ", "ニンジン", "ジャガイモ", "タマネギ", "キャベツ", "レタス", "ホウレンソウ", "ブロッコリー", "ピーマン", "トウモロコシ", "サツマイモ",
+            "カレー", "寿司", "天ぷら", "うどん", "そば", "おにぎり", "ギョーザ", "オムライス", "ハンバーグ", "グラタン", "ピザ",
+            "ケーキ", "アイスクリーム", "プリン", "ドーナツ", "チョコレート", "クッキー", "キャンディ", "パフェ", "パンケーキ", "シュークリーム",
+            "バイク", "バス", "トラック", "タクシー", "電車", "新幹線", "地下鉄", "ヘリコプター", "船", "ロケット", "パトカー", "救急車", "消防車",
+            "冷蔵庫", "洗濯機", "電子レンジ", "掃除機", "エアコン", "扇風機", "ドライヤー", "アイロン", "炊飯器", "トースター", "パソコン", "スマホ", "タブレット", "カメラ",
+            "ペン", "鉛筆", "消しゴム", "ノート", "ハサミ", "ノリ", "ホッチキス", "定規", "コンパス", "絵の具", "筆箱", "ランドセル", "黒板", "教科書", "辞書",
+            "野球ボール", "バスケットボール", "テニスボール", "ゴルフボール", "バドミントン", "ボウリング", "ビリヤード", "サーフボード", "スキー", "スノーボード", "ダンベル",
+            "ギター", "ピアノ", "ドラム", "バイオリン", "トランペット", "サックス", "フルート", "マイク", "スピーカー", "ヘッドホン", "イヤホン",
+            "マンション", "学校", "病院", "警察署", "消防署", "郵便局", "銀行", "コンビニ", "スーパー", "公園", "遊園地", "動物園", "水族館", "映画館", "図書館", "美術館", "神社", "お寺", "城",
+            "山", "川", "海", "湖", "島", "砂漠", "火山", "滝", "洞窟", "森林", "空", "雲", "雨", "雪", "雷", "虹", "台風", "星", "地球", "宇宙",
+            "王冠", "指輪", "ネックレス", "イヤリング", "サングラス", "マスク", "帽子", "靴", "靴下", "手袋", "マフラー", "ネクタイ", "リボン", "財布", "カバン", "リュック", "スーツケース",
+            "包丁", "まな板", "フライパン", "鍋", "おたま", "泡立て器", "フォーク", "スプーン", "ナイフ", "お箸", "お皿", "茶碗", "コップ", "グラス", "マグカップ", "急須", "やかん",
+            "ベッド", "布団", "枕", "机", "椅子", "ソファ", "本棚", "タンス", "鏡", "カーテン", "絨毯", "ランプ", "ゴミ箱",
+            "ロボット", "宇宙人", "幽霊", "妖怪", "ゾンビ", "ドラキュラ", "魔女", "魔法使い", "忍者", "侍", "海賊", "王様", "お姫様", "騎士", "天使", "悪魔", "サンタクロース", "雪男",
+            "ハンマー", "ドライバー", "ペンチ", "ノコギリ", "スコップ", "バケツ", "ほうき", "ちりとり", "脚立", "懐中電灯", "ロープ", "鎖", "鍵", "南京錠", "段ボール", "封筒", "切手",
+            "地球儀", "望遠鏡", "顕微鏡", "温度計", "体重計", "砂時計", "そろばん", "電卓", "レジスタ", "金庫", "消火器", "看板", "標識", "横断歩道", "踏切"
+        ];
+
+        let peer = null, myId = "", myName = "", roomCode = "";
+        let isHost = false;
+        let connections = {}; 
+        let hostConn = null;
+
+        let roomData = {
+            hostId: "",
+            status: 'LOBBY',
+            round: 1,
+            maxRounds: 0,
+            answererId: "",
+            question: "",
+            timeLimit: 60,
+            timeRemaining: 60,
+            players: {},
+            submittedDrawings: {},
+            presentationQueue: [],
+            currentPresIndex: 0,
+            lastRoundResult: null,
+            topicChangeVotes: [],
+            logs: []
+        };
+
+        let timerInterval = null;
+        let resultViewerIndex = 0;
+        let soundEnabled = true;
+
+        // CANVAS STATE
+        let canvas, ctx;
+        let currentTool = 'line';
+        let shapes = [];
+        let isDrawing = false;
+        let startX = 0, startY = 0;
+        let tempShape = null;
+
+        // AUDIO ENGINE
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        let audioCtx = null;
+
+        function playSound(type) {
+            if (!soundEnabled) return;
+            try {
+                if (!audioCtx) audioCtx = new AudioCtx();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                if (type === 'tap') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(440, now);
+                    gain.gain.setValueAtTime(0.08, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                    osc.start(now);
+                    osc.stop(now + 0.05);
+                } else if (type === 'success') {
+                    [523.25, 659.25, 783.99].forEach((freq, i) => {
+                        const o = audioCtx.createOscillator();
+                        const g = audioCtx.createGain();
+                        o.connect(g);
+                        g.connect(audioCtx.destination);
+                        o.type = 'sine';
+                        o.frequency.setValueAtTime(freq, now + i * 0.08);
+                        g.gain.setValueAtTime(0.12, now + i * 0.08);
+                        g.gain.exponentialRampToValueAtTime(0.01, now + i * 0.08 + 0.2);
+                        o.start(now + i * 0.08);
+                        o.stop(now + i * 0.08 + 0.2);
+                    });
+                } else if (type === 'fail') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(240, now);
+                    osc.frequency.linearRampToValueAtTime(120, now + 0.25);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+                    osc.start(now);
+                    osc.stop(now + 0.25);
+                } else if (type === 'victory') {
+                    [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+                        const o = audioCtx.createOscillator();
+                        const g = audioCtx.createGain();
+                        o.connect(g);
+                        g.connect(audioCtx.destination);
+                        o.frequency.setValueAtTime(freq, now + i * 0.1);
+                        g.gain.setValueAtTime(0.15, now + i * 0.1);
+                        g.gain.exponentialRampToValueAtTime(0.01, now + i * 0.1 + 0.25);
+                        o.start(now + i * 0.1);
+                        o.stop(now + i * 0.1 + 0.25);
+                    });
+                }
+            } catch (e) {
+                console.warn("Audio exception:", e);
+            }
+        }
+
+        function showView(viewId) {
+            ['viewLobby', 'viewRoomLobby', 'viewGame', 'viewGameOver'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('hidden');
+            });
+            const target = document.getElementById(viewId);
+            if (target) target.classList.remove('hidden');
+
+            const headerInfo = document.getElementById('headerInfo');
+            if (headerInfo) {
+                if (viewId !== 'viewLobby') headerInfo.classList.remove('hidden');
+                else headerInfo.classList.add('hidden');
+            }
+        }
+
+        function getPlayerName() {
+            const input = document.getElementById('playerNameInput');
+            const val = input ? input.value.trim() : '';
+            return val || '画伯' + Math.floor(Math.random() * 900 + 100);
+        }
+
+        function addLog(message) {
+            if (!roomData.logs) roomData.logs = [];
+            roomData.logs.unshift(message);
+            if (roomData.logs.length > 25) roomData.logs.pop();
+        }
+
+        function showNotice(icon, title, body, duration = 2000) {
+            document.getElementById('noticeIcon').innerText = icon;
+            document.getElementById('noticeTitle').innerText = title;
+            document.getElementById('noticeBody').innerText = body;
+            const modal = document.getElementById('actionNoticeModal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                setTimeout(() => { modal.classList.add('hidden'); }, duration);
+            }
+        }
+
+        // --- CANVAS ENGINE ---
+        function initCanvas() {
+            canvas = document.getElementById('drawCanvas');
+            if (!canvas) return;
+            ctx = canvas.getContext('2d');
+            resetLocalCanvas();
+
+            const getPos = (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                return {
+                    x: (clientX - rect.left) * scaleX,
+                    y: (clientY - rect.top) * scaleY
+                };
+            };
+
+            const startDraw = (e) => {
+                if (roomData.status !== 'DRAWING' || roomData.answererId === myId) return;
+                isDrawing = true;
+                const pos = getPos(e);
+                startX = pos.x;
+                startY = pos.y;
+            };
+
+            const moveDraw = (e) => {
+                if (!isDrawing) return;
+                const pos = getPos(e);
+
+                if (currentTool === 'line') {
+                    tempShape = { type: 'line', x1: startX, y1: startY, x2: pos.x, y2: pos.y };
+                } else if (currentTool === 'circle') {
+                    const dx = pos.x - startX;
+                    const dy = pos.y - startY;
+                    const radius = Math.max(Math.abs(dx), Math.abs(dy)) / 2;
+                    
+                    const cx = startX + (dx >= 0 ? radius : -radius);
+                    const cy = startY + (dy >= 0 ? radius : -radius);
+
+                    tempShape = { type: 'circle', cx: cx, cy: cy, r: radius };
+                }
+                redrawCanvas();
+            };
+
+            const endDraw = () => {
+                if (!isDrawing) return;
+                isDrawing = false;
+                if (tempShape) {
+                    if (currentTool !== 'circle' || tempShape.r > 2) {
+                        shapes.push(tempShape);
+                    }
+                    tempShape = null;
+                    redrawCanvas();
+                    updateStrokeCountUI();
+                }
+            };
+
+            canvas.addEventListener('mousedown', startDraw);
+            canvas.addEventListener('mousemove', moveDraw);
+            canvas.addEventListener('mouseup', endDraw);
+            canvas.addEventListener('mouseleave', endDraw);
+
+            canvas.addEventListener('touchstart', startDraw);
+            canvas.addEventListener('touchmove', moveDraw);
+            canvas.addEventListener('touchend', endDraw);
+        }
+
+        function resetLocalCanvas() {
+            shapes = [];
+            tempShape = null;
+            redrawCanvas();
+            updateStrokeCountUI();
+            
+            const submitBtn = document.getElementById('submitDrawBtn');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerText = "この絵で確定して提出する 🎨";
+            }
+        }
+
+        window.setTool = function(tool) {
+            playSound('tap');
+            currentTool = tool;
+            const lineBtn = document.getElementById('toolLineBtn');
+            const circleBtn = document.getElementById('toolCircleBtn');
+
+            if (lineBtn && circleBtn) {
+                if (tool === 'line') {
+                    lineBtn.className = "bg-purple-600 text-white font-bold px-4 py-2 rounded-xl text-sm border border-purple-400/50 shadow flex items-center gap-1.5 transition";
+                    circleBtn.className = "bg-slate-800 text-purple-300 hover:bg-slate-700 font-bold px-4 py-2 rounded-xl text-sm border border-purple-500/30 transition flex items-center gap-1.5";
+                } else {
+                    circleBtn.className = "bg-purple-600 text-white font-bold px-4 py-2 rounded-xl text-sm border border-purple-400/50 shadow flex items-center gap-1.5 transition";
+                    lineBtn.className = "bg-slate-800 text-purple-300 hover:bg-slate-700 font-bold px-4 py-2 rounded-xl text-sm border border-purple-500/30 transition flex items-center gap-1.5";
+                }
+            }
+        };
+
+        function redrawCanvas() {
+            if (!ctx) return;
+            ctx.fillStyle = '#020617';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.lineWidth = 5;
+            ctx.strokeStyle = '#ffffff';
+
+            const drawShape = (s) => {
+                ctx.beginPath();
+                if (s.type === 'line') {
+                    ctx.moveTo(s.x1, s.y1);
+                    ctx.lineTo(s.x2, s.y2);
+                } else if (s.type === 'circle') {
+                    ctx.arc(s.cx, s.cy, s.r, 0, Math.PI * 2);
+                }
+                ctx.stroke();
+            };
+
+            shapes.forEach(drawShape);
+            if (tempShape) {
+                ctx.strokeStyle = '#a855f7';
+                drawShape(tempShape);
+            }
+        }
+
+        window.undoCanvas = function() {
+            playSound('tap');
+            if (shapes.length > 0) {
+                shapes.pop();
+                redrawCanvas();
+                updateStrokeCountUI();
+            }
+        };
+
+        window.clearCanvas = function() {
+            playSound('tap');
+            shapes = [];
+            redrawCanvas();
+            updateStrokeCountUI();
+        };
+
+        function updateStrokeCountUI() {
+            const el = document.getElementById('strokeCountDisplay');
+            if (el) el.innerText = shapes.length;
+        }
+
+        // --- ROOM HANDLERS ---
+
+        function handleCreateRoom() {
+            playSound('tap');
+            myName = getPlayerName();
+            const input = document.getElementById('joinRoomCodeInput');
+            roomCode = input ? input.value.trim().toLowerCase() : '';
+            
+            if (!roomCode) {
+                alert("合言葉を入力してください");
+                return;
+            }
+
+            if (typeof Peer === 'undefined') {
+                alert("通信ライブラリの読み込み中です。数秒待ってから再試行してください。");
+                return;
+            }
+
+            isHost = true;
+            const peerId = `${PREFIX}${roomCode}-host`;
+            peer = new Peer(peerId);
+
+            peer.on('open', (id) => {
+                myId = id;
+                roomData.hostId = myId;
+                roomData.players = {
+                    [myId]: { id: myId, name: myName, score: 0, isHost: true, order: 0 }
+                };
+                roomData.logs = [];
+                
+                setupLobbyUI();
+                renderRoomState();
+            });
+
+            peer.on('error', (err) => {
+                if (err.type === 'unavailable-id') {
+                    alert("その合言葉はすでに使用されています。別の合言葉にしてください。");
+                } else {
+                    alert("接続エラーが発生しました: " + err.type);
+                }
+            });
+
+            peer.on('connection', (conn) => {
+                conn.on('open', () => {
+                    conn.on('data', (data) => handleHostData(conn, data));
+                });
+                conn.on('close', () => {
+                    delete connections[conn.peer];
+                    delete roomData.players[conn.peer];
+                    broadcastState();
+                });
+            });
+        }
+
+        function handleJoinRoom() {
+            playSound('tap');
+            myName = getPlayerName();
+            const input = document.getElementById('joinRoomCodeInput');
+            roomCode = input ? input.value.trim().toLowerCase() : '';
+
+            if (!roomCode) {
+                alert("合言葉を入力してください");
+                return;
+            }
+
+            if (typeof Peer === 'undefined') {
+                alert("通信ライブラリの読み込み中です。数秒待ってから再試行してください。");
+                return;
+            }
+
+            isHost = false;
+            const hostPeerId = `${PREFIX}${roomCode}-host`;
+            peer = new Peer();
+
+            peer.on('open', (id) => {
+                myId = id;
+                hostConn = peer.connect(hostPeerId);
+
+                hostConn.on('open', () => {
+                    hostConn.send({ type: 'JOIN', id: myId, name: myName });
+                    setupLobbyUI();
+                });
+
+                hostConn.on('data', (data) => handleClientData(data));
+            });
+
+            peer.on('error', () => {
+                alert("部屋が見つかりませんでした。合言葉を確認してください。");
+            });
+        }
+
+        function setupLobbyUI() {
+            document.getElementById('displayRoomCode').innerText = roomCode;
+            document.getElementById('lobbyRoomCode').innerText = roomCode;
+            
+            const hostBox = document.getElementById('hostSettingsBox');
+            if (hostBox) {
+                if (isHost) hostBox.classList.remove('hidden');
+                else hostBox.classList.add('hidden');
+            }
+
+            showView('viewRoomLobby');
+            initCanvas();
+        }
+
+        function broadcastState() {
+            if (!isHost) return;
+            Object.values(connections).forEach(c => c.send({ type: 'SYNC_STATE', roomData }));
+            renderRoomState();
+        }
+
+        window.updateTimeLimitSetting = function(val) {
+            if (!isHost) return;
+            roomData.timeLimit = parseInt(val, 10);
+            broadcastState();
+        };
+
+        function handleHostData(conn, data) {
+            if (data.type === 'JOIN') {
+                if (roomData.status !== 'LOBBY') {
+                    conn.send({ type: 'ERROR', message: 'ゲームはすでに進行中です' });
+                    return;
+                }
+                connections[conn.peer] = conn;
+                const orderIdx = Object.keys(roomData.players).length;
+                roomData.players[data.id] = { id: data.id, name: data.name, score: 0, isHost: false, order: orderIdx };
+                broadcastState();
+            } else if (data.type === 'SUBMIT_DRAWING') {
+                roomData.submittedDrawings[data.id] = { image: data.image, strokeCount: data.strokeCount };
+                addLog(`${roomData.players[data.id].name} が絵を提出しました。(${data.strokeCount}画)`);
+                
+                const drawerCount = Object.keys(roomData.players).length - 1;
+                if (Object.keys(roomData.submittedDrawings).length === drawerCount) {
+                    processStartPresentationPhase();
+                } else {
+                    broadcastState();
+                }
+            } else if (data.type === 'JUDGE_DRAWING') {
+                processAuthorJudgeResult(data.isCorrect);
+            } else if (data.type === 'PROCEED_NEXT_ROUND') {
+                processProceedNextRound();
+            } else if (data.type === 'REQUEST_TOPIC_CHANGE') {
+                processTopicChangeRequest(data.id);
+            } else if (data.type === 'RESTART') {
+                resetGameToLobby();
+            }
+        }
+
+        function handleClientData(data) {
+            if (data.type === 'SYNC_STATE') {
+                const prevStatus = roomData.status;
+                roomData = data.roomData;
+                
+                if (prevStatus !== 'DRAWING' && roomData.status === 'DRAWING') {
+                    resetLocalCanvas();
+                }
+
+                renderRoomState();
+            } else if (data.type === 'TIME_EXPIRED_SUBMIT') {
+                // 時間切れ時、自分の手元のキャンバス状態を自動送信
+                autoSubmitCurrentCanvas();
+            } else if (data.type === 'ERROR') {
+                alert(data.message);
+            }
+        }
+
+        // 時間切れ時に手元のキャンバスを自動提出
+        function autoSubmitCurrentCanvas() {
+            if (roomData.answererId === myId) return; // 回答者は提出不要
+            if (roomData.submittedDrawings[myId]) return; // 提出済みならスルー
+
+            const imgData = canvas ? canvas.toDataURL() : '';
+            const strokeCount = shapes.length;
+
+            const submitBtn = document.getElementById('submitDrawBtn');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerText = "時間切れ提出 ✓";
+            }
+
+            if (isHost) {
+                roomData.submittedDrawings[myId] = { image: imgData, strokeCount: strokeCount };
+                addLog(`${roomData.players[myId].name} が時間切れで作品を自動提出しました。(${strokeCount}画)`);
+            } else {
+                hostConn.send({ type: 'SUBMIT_DRAWING', id: myId, image: imgData, strokeCount: strokeCount });
+            }
+        }
+
+        // --- GAME ENGINE (HOST) ---
+
+        window.startGame = function() {
+            playSound('tap');
+            if (!isHost) return;
+
+            const playerIds = Object.keys(roomData.players);
+            if (playerIds.length < 2) {
+                alert("対戦には2名以上が必要です");
+                return;
+            }
+
+            roomData.round = 1;
+            roomData.maxRounds = playerIds.length;
+            roomData.logs = [];
+            
+            playerIds.forEach(id => roomData.players[id].score = 0);
+
+            startNewRound();
+        };
+
+        function startNewRound() {
+            stopTimer();
+
+            const playerIds = Object.keys(roomData.players);
+            roomData.answererId = playerIds[roomData.round - 1];
+
+            const topic = QUESTION_TOPICS[Math.floor(Math.random() * QUESTION_TOPICS.length)];
+            roomData.question = topic;
+
+            roomData.status = 'DRAWING';
+            roomData.submittedDrawings = {};
+            roomData.presentationQueue = [];
+            roomData.currentPresIndex = 0;
+            roomData.lastRoundResult = null;
+            roomData.topicChangeVotes = [];
+            roomData.timeRemaining = roomData.timeLimit;
+
+            resetLocalCanvas();
+            addLog(`=== ラウンド ${roomData.round} 開始 (回答者: ${roomData.players[roomData.answererId].name}) ===`);
+            
+            if (roomData.timeLimit > 0) {
+                startHostTimer();
+            }
+
+            broadcastState();
+        }
+
+        function startHostTimer() {
+            stopTimer();
+            timerInterval = setInterval(() => {
+                if (roomData.status !== 'DRAWING') {
+                    stopTimer();
+                    return;
+                }
+                roomData.timeRemaining--;
+                if (roomData.timeRemaining <= 0) {
+                    stopTimer();
+                    addLog(`⏱ 制限時間切れ！描かれている途中の作品を送信・提出します。`);
+                    
+                    // 各クライアントに自身のキャンバスを送信するよう指示
+                    Object.values(connections).forEach(c => c.send({ type: 'TIME_EXPIRED_SUBMIT' }));
+                    // ホスト自身も提出
+                    autoSubmitCurrentCanvas();
+
+                    // 少し待って全員分をまとめて発表フェーズへ移行
+                    setTimeout(() => {
+                        processStartPresentationPhase();
+                    }, 800);
+                }
+                broadcastState();
+            }, 1000);
+        }
+
+        function stopTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+        }
+
+        // お題チェンジの処理
+        window.requestTopicChange = function() {
+            playSound('tap');
+            if (roomData.answererId === myId) return;
+
+            if (isHost) {
+                processTopicChangeRequest(myId);
+            } else {
+                hostConn.send({ type: 'REQUEST_TOPIC_CHANGE', id: myId });
+            }
+        };
+
+        function processTopicChangeRequest(playerId) {
+            if (!roomData.topicChangeVotes) roomData.topicChangeVotes = [];
+            if (!roomData.topicChangeVotes.includes(playerId)) {
+                roomData.topicChangeVotes.push(playerId);
+            }
+
+            const totalDrawers = Object.keys(roomData.players).length - 1;
+            addLog(`🔄 ${roomData.players[playerId].name} がお題チェンジに同意しました (${roomData.topicChangeVotes.length}/${totalDrawers})`);
+
+            if (roomData.topicChangeVotes.length >= totalDrawers) {
+                const newTopic = QUESTION_TOPICS[Math.floor(Math.random() * QUESTION_TOPICS.length)];
+                roomData.question = newTopic;
+                roomData.topicChangeVotes = [];
+                addLog(`✨ 全員の同意でお題が「${newTopic}」に変わりました！`);
+                showNotice("🔄", "お題が変更されました！", `新しいお題: 「${newTopic}」`, 2000);
+            }
+
+            broadcastState();
+        }
+
+        function processStartPresentationPhase() {
+            stopTimer();
+            roomData.status = 'PRESENTATION';
+
+            const queue = [];
+            Object.entries(roomData.submittedDrawings).forEach(([pId, data]) => {
+                queue.push({
+                    id: pId,
+                    strokeCount: data.strokeCount,
+                    image: data.image,
+                    order: roomData.players[pId].order
+                });
+            });
+
+            queue.sort((a, b) => {
+                if (a.strokeCount !== b.strokeCount) {
+                    return a.strokeCount - b.strokeCount;
+                }
+                return a.order - b.order;
+            });
+
+            roomData.presentationQueue = queue;
+            roomData.currentPresIndex = 0;
+
+            addLog(`🎨 全員の絵が出揃いました！画数の少ない順に発表を開始します。`);
+            broadcastState();
+        }
+
+        function processAuthorJudgeResult(isCorrect) {
+            const currentPres = roomData.presentationQueue[roomData.currentPresIndex];
+            const author = roomData.players[currentPres.id];
+            const answerer = roomData.players[roomData.answererId];
+
+            if (isCorrect) {
+                playSound('success');
+                let answererScore = 1;
+                if (roomData.currentPresIndex === 0) answererScore = 3;
+                else if (roomData.currentPresIndex <= 2) answererScore = 2;
+
+                const authorScore = 2;
+
+                answerer.score += answererScore;
+                author.score += authorScore;
+
+                roomData.lastRoundResult = {
+                    isSuccess: true,
+                    authorName: author.name,
+                    authorId: author.id,
+                    strokeCount: currentPres.strokeCount,
+                    image: currentPres.image,
+                    answererScore: answererScore,
+                    authorScore: authorScore
+                };
+
+                addLog(`🎯 正解！ (${author.name} の作品 [${currentPres.strokeCount}画]) -> 回答者:+${answererScore}pt, 描き手:+${authorScore}pt`);
+
+                showRoundResultPhase();
+            } else {
+                playSound('fail');
+                addLog(`❌ 不正解... [${author.name} の作品 (${currentPres.strokeCount}画)]`);
+                
+                roomData.currentPresIndex++;
+                if (roomData.currentPresIndex >= roomData.presentationQueue.length) {
+                    addLog(`💦 全員の絵が見終わりましたが正解が出ませんでした。`);
+                    
+                    roomData.lastRoundResult = {
+                        isSuccess: false,
+                        authorName: null,
+                        strokeCount: 0,
+                        image: null,
+                        answererScore: 0,
+                        authorScore: 0
+                    };
+
+                    showRoundResultPhase();
+                } else {
+                    broadcastState();
+                }
+            }
+        }
+
+        function showRoundResultPhase() {
+            roomData.status = 'ROUND_RESULT';
+            resultViewerIndex = 0;
+            broadcastState();
+        }
+
+        window.proceedToNextRound = function() {
+            playSound('tap');
+            if (!isHost) {
+                hostConn.send({ type: 'PROCEED_NEXT_ROUND' });
+                return;
+            }
+            processProceedNextRound();
+        };
+
+        function processProceedNextRound() {
+            if (roomData.round < roomData.maxRounds) {
+                roomData.round++;
+                startNewRound();
+            } else {
+                roomData.status = 'GAMEOVER';
+                addLog(`🏆 全ラウンド終了！最終順位を発表します。`);
+                broadcastState();
+            }
+        }
+
+        window.navigateResultImage = function(dir) {
+            playSound('tap');
+            const total = roomData.presentationQueue ? roomData.presentationQueue.length : 0;
+            if (total === 0) return;
+
+            resultViewerIndex = (resultViewerIndex + dir + total) % total;
+            updateResultGalleryDisplay();
+        };
+
+        window.selectResultImageIndex = function(idx) {
+            playSound('tap');
+            resultViewerIndex = idx;
+            updateResultGalleryDisplay();
+        };
+
+        function updateResultGalleryDisplay() {
+            const queue = roomData.presentationQueue;
+            if (!queue || queue.length === 0) return;
+
+            const item = queue[resultViewerIndex];
+            const author = roomData.players[item.id];
+
+            document.getElementById('resultViewerIndexText').innerText = `${resultViewerIndex + 1} / ${queue.length}`;
+            document.getElementById('resultImageDisplay').src = item.image;
+            document.getElementById('resultAuthorName').innerText = `${author ? author.name : ''} さんの作品`;
+            document.getElementById('resultStrokeCount').innerText = `${item.strokeCount} 画`;
+
+            const thumbs = document.querySelectorAll('.result-thumb-btn');
+            thumbs.forEach((t, i) => {
+                if (i === resultViewerIndex) {
+                    t.className = "result-thumb-btn w-12 h-12 rounded-xl border-2 border-amber-400 bg-slate-900 overflow-hidden flex-shrink-0 cursor-pointer shadow-lg scale-105 transition";
+                } else {
+                    t.className = "result-thumb-btn w-12 h-12 rounded-xl border border-purple-500/30 bg-slate-950 opacity-60 hover:opacity-100 overflow-hidden flex-shrink-0 cursor-pointer transition";
+                }
+            });
+        }
+
+        // --- RENDER ENGINE ---
+
+        function renderRoomState() {
+            if (!roomData) return;
+
+            const isHostUser = roomData.hostId === myId;
+            const isAnswerer = roomData.answererId === myId;
+
+            // スコア一覧（文字サイズ拡大・視認性強化）
+            const scoreListEl = document.getElementById('headerScoreList');
+            if (scoreListEl) {
+                scoreListEl.innerHTML = '';
+                Object.values(roomData.players).forEach(p => {
+                    const tag = document.createElement('div');
+                    tag.className = "bg-slate-900/90 px-4 py-2 rounded-2xl border border-purple-400/30 text-slate-100 font-black flex items-center gap-2 shadow-md";
+                    tag.innerHTML = `<span class="text-sm md:text-base">${escapeHtml(p.name)}:</span><span class="text-amber-300 text-lg md:text-xl font-black font-mono">${p.score} <span class="text-xs font-normal text-purple-300">pt</span></span>`;
+                    scoreListEl.appendChild(tag);
+                });
+            }
+
+            // タイマー表示
+            const timerContainer = document.getElementById('timerContainer');
+            const timerDisplay = document.getElementById('timerDisplay');
+            if (roomData.status === 'DRAWING' && roomData.timeLimit > 0) {
+                timerContainer.classList.remove('hidden');
+                timerContainer.classList.add('flex');
+                const m = Math.floor(roomData.timeRemaining / 60);
+                const s = roomData.timeRemaining % 60;
+                timerDisplay.innerText = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+            } else {
+                timerContainer.classList.add('hidden');
+                timerContainer.classList.remove('flex');
+            }
+
+            if (roomData.status === 'LOBBY') {
+                showView('viewRoomLobby');
+
+                const startBtn = document.getElementById('startGameBtn');
+                const waitingMsg = document.getElementById('waitingForHostMsg');
+
+                if (isHostUser) {
+                    if (startBtn) startBtn.classList.remove('hidden');
+                    if (waitingMsg) waitingMsg.classList.add('hidden');
+                } else {
+                    if (startBtn) startBtn.classList.add('hidden');
+                    if (waitingMsg) waitingMsg.classList.remove('hidden');
+                }
+
+                const playerList = document.getElementById('playerList');
+                if (playerList) {
+                    playerList.innerHTML = '';
+                    const playersArray = Object.values(roomData.players);
+                    const pCountEl = document.getElementById('playerCount');
+                    if (pCountEl) pCountEl.innerText = playersArray.length;
+
+                    playersArray.forEach(p => {
+                        const div = document.createElement('div');
+                        div.className = "flex items-center justify-between bg-slate-950/80 border border-purple-500/20 p-4 rounded-2xl";
+                        div.innerHTML = `
+                            <div class="flex items-center space-x-3">
+                                <div class="w-10 h-10 rounded-full bg-purple-500/20 text-purple-300 font-bold flex items-center justify-center text-base border border-purple-400/30">
+                                    ${escapeHtml(p.name.charAt(0))}
+                                </div>
+                                <span class="font-bold text-base text-slate-100">${escapeHtml(p.name)}</span>
+                            </div>
+                            ${p.isHost ? '<span class="text-xs font-bold bg-purple-500/20 text-purple-300 px-3 py-1 rounded-full border border-purple-400/30">ホスト</span>' : ''}
+                        `;
+                        playerList.appendChild(div);
+                    });
+                }
+
+            } else if (roomData.status === 'DRAWING' || roomData.status === 'PRESENTATION' || roomData.status === 'ROUND_RESULT') {
+                showView('viewGame');
+
+                document.getElementById('roundNumber').innerText = roomData.round;
+                document.getElementById('maxRounds').innerText = roomData.maxRounds;
+
+                const roleBadge = document.getElementById('myRoleBadge');
+                if (isAnswerer) {
+                    roleBadge.innerText = '🔍 回答者';
+                    roleBadge.className = 'font-black text-lg text-amber-300 animate-pulse';
+                } else {
+                    roleBadge.innerText = '🎨 描き手';
+                    roleBadge.className = 'font-black text-lg text-purple-300';
+                }
+
+                const qTopic = document.getElementById('questionTopic');
+                const qGuide = document.getElementById('topicGuide');
+                const qSubtitle = document.getElementById('topicSubtitle');
+                const btnChangeTopic = document.getElementById('btnChangeTopic');
+
+                if (isAnswerer) {
+                    qSubtitle.innerText = '回答者の表示';
+                    qTopic.innerText = `🔍 あなたは回答者です`;
+                    qGuide.innerText = '※お題は見えません。描き手が順番に見せる絵を見て口頭で回答してください！';
+                    btnChangeTopic.classList.add('hidden');
+                } else {
+                    qSubtitle.innerText = '今回のお題';
+                    qTopic.innerText = `「${roomData.question}」`;
+                    qGuide.innerText = '※「直線」と「正円」だけで描いてください！画数が少ないほど先に見せられます。';
+                    
+                    if (roomData.status === 'DRAWING') {
+                        btnChangeTopic.classList.remove('hidden');
+                        const totalDrawers = Object.keys(roomData.players).length - 1;
+                        const votes = roomData.topicChangeVotes ? roomData.topicChangeVotes.length : 0;
+                        document.getElementById('topicChangeVoteCount').innerText = `${votes}/${totalDrawers}`;
+                    } else {
+                        btnChangeTopic.classList.add('hidden');
+                    }
+                }
+
+                const subDraw = document.getElementById('subViewDraw');
+                const subWait = document.getElementById('subViewAnswererWait');
+                const subPres = document.getElementById('subViewPresentation');
+                const subResult = document.getElementById('subViewRoundResult');
+
+                subDraw.classList.add('hidden');
+                subWait.classList.add('hidden');
+                subPres.classList.add('hidden');
+                subResult.classList.add('hidden');
+
+                if (roomData.status === 'DRAWING') {
+                    if (isAnswerer) {
+                        subWait.classList.remove('hidden');
+                        const waitList = document.getElementById('answererStatusList');
+                        waitList.innerHTML = '';
+                        Object.values(roomData.players).forEach(p => {
+                            if (p.id === roomData.answererId) return;
+                            const submitted = !!roomData.submittedDrawings[p.id];
+                            const tag = document.createElement('span');
+                            tag.className = `text-xs px-3 py-1.5 rounded-full font-bold border ${submitted ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-slate-800 text-purple-300/50 border-purple-500/20'}`;
+                            tag.innerText = `${p.name}: ${submitted ? '描き終えました ✓' : 'お絵かき中...'}`;
+                            waitList.appendChild(tag);
+                        });
+                    } else {
+                        subDraw.classList.remove('hidden');
+                        const drawList = document.getElementById('drawStatusList');
+                        drawList.innerHTML = '';
+                        Object.values(roomData.players).forEach(p => {
+                            if (p.id === roomData.answererId) return;
+                            const submitted = !!roomData.submittedDrawings[p.id];
+                            const tag = document.createElement('span');
+                            tag.className = `text-xs px-3 py-1 rounded-full font-bold border ${submitted ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-slate-800 text-purple-300/50 border-purple-500/20'}`;
+                            tag.innerText = `${p.name}: ${submitted ? '提出完了 ✓' : '記入中…'}`;
+                            drawList.appendChild(tag);
+                        });
+                    }
+
+                } else if (roomData.status === 'PRESENTATION') {
+                    subPres.classList.remove('hidden');
+
+                    const currentPres = roomData.presentationQueue[roomData.currentPresIndex];
+                    if (currentPres) {
+                        const author = roomData.players[currentPres.id];
+                        document.getElementById('presTurnBadge').innerText = `${roomData.currentPresIndex + 1} 枚目の発表 (${roomData.presentationQueue.length}枚中)`;
+                        document.getElementById('presAuthorName').innerText = `${author ? author.name : ''} さんの作品 (${currentPres.strokeCount}画)`;
+                        document.getElementById('presImageDisplay').src = currentPres.image;
+
+                        const isAuthorOfCurrent = currentPres.id === myId;
+                        const authorCtrl = document.getElementById('authorJudgeControls');
+                        const spectatorMsg = document.getElementById('spectatorJudgeMsg');
+
+                        if (isAuthorOfCurrent) {
+                            authorCtrl.classList.remove('hidden');
+                            spectatorMsg.classList.add('hidden');
+                        } else {
+                            authorCtrl.classList.add('hidden');
+                            spectatorMsg.classList.remove('hidden');
+                        }
+                    }
+
+                    const historyList = document.getElementById('presHistoryList');
+                    historyList.innerHTML = '';
+                    roomData.presentationQueue.forEach((pres, idx) => {
+                        const author = roomData.players[pres.id];
+                        const isCurrent = idx === roomData.currentPresIndex;
+                        const isPassed = idx < roomData.currentPresIndex;
+
+                        const card = document.createElement('div');
+                        card.className = `p-3 rounded-2xl border text-center space-y-1 shadow ${isCurrent ? 'bg-purple-900/40 border-purple-400 ring-2 ring-purple-500' : isPassed ? 'bg-slate-950/60 border-slate-800 opacity-50' : 'bg-slate-900 border-purple-500/20'}`;
+                        
+                        if (isCurrent || isPassed) {
+                            card.innerHTML = `
+                                <div class="text-[10px] font-bold text-purple-300">${idx + 1}枚目 (${pres.strokeCount}画)</div>
+                                <img src="${pres.image}" class="w-full h-16 object-contain bg-slate-950 rounded-lg">
+                                <div class="text-xs font-bold text-white truncate">${escapeHtml(author ? author.name : '')}</div>
+                            `;
+                        } else {
+                            card.innerHTML = `
+                                <div class="text-[10px] font-bold text-purple-400">${idx + 1}枚目 (${pres.strokeCount}画)</div>
+                                <div class="w-full h-16 bg-slate-950/90 rounded-lg flex items-center justify-center text-purple-400/50 text-xl font-black">🔒</div>
+                                <div class="text-xs font-bold text-purple-300/60 truncate">${escapeHtml(author ? author.name : '')}</div>
+                            `;
+                        }
+                        historyList.appendChild(card);
+                    });
+
+                } else if (roomData.status === 'ROUND_RESULT') {
+                    subResult.classList.remove('hidden');
+
+                    const res = roomData.lastRoundResult;
+                    const banner = document.getElementById('roundResultBanner');
+
+                    if (res && res.isSuccess) {
+                        banner.innerHTML = `
+                            <span class="px-4 py-1.5 bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 rounded-full text-xs font-bold uppercase tracking-wider">ROUND RESULT</span>
+                            <h3 class="text-3xl font-black text-emerald-300">🎉 見事お題的中！！</h3>
+                            <p class="text-base text-purple-100 font-bold">正解のお題: 「<span class="text-yellow-300">${roomData.question}</span>」</p>
+                            <p class="text-sm text-purple-300/80">
+                                描き手: <strong class="text-white">${res.authorName}</strong> (${res.strokeCount}画) [+${res.authorScore}pt]<br>
+                                回答者: <strong class="text-white">${roomData.players[roomData.answererId].name}</strong> [+${res.answererScore}pt]
+                            </p>
+                        `;
+                    } else {
+                        banner.innerHTML = `
+                            <span class="px-4 py-1.5 bg-rose-500/20 text-rose-300 border border-rose-400/40 rounded-full text-xs font-bold uppercase tracking-wider">ROUND RESULT</span>
+                            <h3 class="text-3xl font-black text-rose-400">💦 残念！全員不正解...</h3>
+                            <p class="text-base text-purple-100 font-bold">正解のお題: 「<span class="text-yellow-300">${roomData.question}</span>」</p>
+                            <p class="text-sm text-purple-300/80">このラウンドで得点を得たプレイヤーはいません。</p>
+                        `;
+                    }
+
+                    const thumbList = document.getElementById('resultThumbnailList');
+                    if (thumbList) {
+                        thumbList.innerHTML = '';
+                        roomData.presentationQueue.forEach((item, idx) => {
+                            const btn = document.createElement('button');
+                            btn.onclick = () => selectResultImageIndex(idx);
+                            btn.innerHTML = `<img src="${item.image}" class="w-full h-full object-contain">`;
+                            thumbList.appendChild(btn);
+                        });
+                    }
+
+                    updateResultGalleryDisplay();
+
+                    const hostCtrl = document.getElementById('hostNextRoundControls');
+                    const clientMsg = document.getElementById('clientNextRoundMsg');
+
+                    if (isHostUser) {
+                        hostCtrl.classList.remove('hidden');
+                        clientMsg.classList.add('hidden');
+                    } else {
+                        hostCtrl.classList.add('hidden');
+                        clientMsg.classList.remove('hidden');
+                    }
+                }
+
+                renderActionLogs();
+
+            } else if (roomData.status === 'GAMEOVER') {
+                showView('viewGameOver');
+                playSound('victory');
+                if (typeof confetti === 'function') {
+                    confetti({ particleCount: 150, spread: 90, origin: { y: 0.6 } });
+                }
+
+                const rankingEl = document.getElementById('finalScoreRanking');
+                if (rankingEl) {
+                    rankingEl.innerHTML = '';
+                    const sortedPlayers = Object.values(roomData.players).sort((a, b) => b.score - a.score);
+
+                    sortedPlayers.forEach((p, idx) => {
+                        const row = document.createElement('div');
+                        row.className = `flex justify-between items-center p-4 rounded-2xl border ${idx === 0 ? 'bg-gradient-to-r from-amber-500/20 to-yellow-500/10 border-amber-400/50' : 'bg-slate-950 border-purple-500/20'}`;
+                        row.innerHTML = `
+                            <div class="flex items-center space-x-3">
+                                <span class="font-black text-lg ${idx === 0 ? 'text-amber-300' : 'text-purple-300'}">#${idx + 1}</span>
+                                <span class="font-bold text-slate-100">${escapeHtml(p.name)}</span>
+                            </div>
+                            <span class="font-black text-xl text-amber-300">${p.score} <span class="text-xs text-purple-300">pt</span></span>
+                        `;
+                        rankingEl.appendChild(row);
+                    });
+                }
+
+                const hostCtrl = document.getElementById('gameOverHostControls');
+                const clientMsg = document.getElementById('gameOverClientMsg');
+
+                if (isHostUser) {
+                    if (hostCtrl) hostCtrl.classList.remove('hidden');
+                    if (clientMsg) clientMsg.classList.add('hidden');
+                } else {
+                    if (hostCtrl) hostCtrl.classList.add('hidden');
+                    if (clientMsg) clientMsg.classList.remove('hidden');
+                }
+            }
+        }
+
+        function renderActionLogs() {
+            const logList = document.getElementById('actionLogList');
+            if (!logList) return;
+
+            if (!roomData.logs || roomData.logs.length === 0) {
+                logList.innerHTML = '<div class="text-slate-500 text-center py-2">ログはまだありません</div>';
+                return;
+            }
+
+            logList.innerHTML = '';
+            roomData.logs.forEach((logText, idx) => {
+                const div = document.createElement('div');
+                div.className = `flex items-center gap-2 ${idx === 0 ? 'text-purple-300 font-bold' : 'text-purple-200/60'}`;
+                div.innerHTML = `
+                    <span class="text-[10px] text-purple-500 font-mono">●</span>
+                    <span>${escapeHtml(logText)}</span>
+                `;
+                logList.appendChild(div);
+            });
+        }
+
+        // --- ACTIONS ---
+
+        window.submitDrawing = function() {
+            playSound('tap');
+            if (shapes.length === 0) {
+                if (!confirm("画数が0画のまま提出しますか？")) return;
+            }
+
+            const imgData = canvas.toDataURL();
+            const strokeCount = shapes.length;
+
+            const submitBtn = document.getElementById('submitDrawBtn');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerText = "提出済み ✓";
+            }
+
+            if (isHost) {
+                roomData.submittedDrawings[myId] = { image: imgData, strokeCount: strokeCount };
+                addLog(`${roomData.players[myId].name} が絵を提出しました。(${strokeCount}画)`);
+                
+                const drawerCount = Object.keys(roomData.players).length - 1;
+                if (Object.keys(roomData.submittedDrawings).length === drawerCount) {
+                    processStartPresentationPhase();
+                } else {
+                    broadcastState();
+                }
+            } else {
+                hostConn.send({ type: 'SUBMIT_DRAWING', id: myId, image: imgData, strokeCount: strokeCount });
+            }
+        };
+
+        window.judgeCurrentDrawing = function(isCorrect) {
+            playSound('tap');
+            if (isHost) {
+                processAuthorJudgeResult(isCorrect);
+            } else {
+                hostConn.send({ type: 'JUDGE_DRAWING', id: myId, isCorrect: isCorrect });
+            }
+        };
+
+        window.restartGame = function() {
+            playSound('tap');
+            if (!isHost) return;
+            resetGameToLobby();
+        };
+
+        function resetGameToLobby() {
+            stopTimer();
+            roomData.status = 'LOBBY';
+            roomData.round = 1;
+            roomData.submittedDrawings = {};
+            roomData.presentationQueue = [];
+            roomData.currentPresIndex = 0;
+            roomData.lastRoundResult = null;
+            roomData.topicChangeVotes = [];
+            roomData.logs = [];
+            broadcastState();
+        }
+
+        window.toggleSound = function() {
+            soundEnabled = !soundEnabled;
+            const icon = document.getElementById('soundIcon');
+            if (icon) {
+                if (soundEnabled) icon.className = "fa-solid fa-volume-high";
+                else icon.className = "fa-solid fa-volume-xmark text-rose-400";
+            }
+        };
+
+        window.copyRoomCode = function() {
+            if (!roomCode) return;
+            navigator.clipboard.writeText(roomCode);
+            showNotice("📋", "コピー完了", `合言葉 [ ${roomCode} ] をコピーしました！`, 1500);
+        };
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const btnCreate = document.getElementById('btnCreateRoom');
+            const btnJoin = document.getElementById('btnJoinRoom');
+
+            if (btnCreate) btnCreate.addEventListener('click', handleCreateRoom);
+            if (btnJoin) btnJoin.addEventListener('click', handleJoinRoom);
+        });
+    </script>
+</body>
+</html>
