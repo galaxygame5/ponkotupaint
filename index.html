@@ -212,7 +212,7 @@
                     </div>
                 </div>
 
-                <!-- Scores Summary (見やすく大型化) -->
+                <!-- Scores Summary (大型化) -->
                 <div class="border-t border-purple-500/20 pt-3">
                     <div class="text-[11px] font-bold text-purple-300 uppercase tracking-wider mb-2">現在の獲得スコア</div>
                     <div id="headerScoreList" class="flex flex-wrap gap-2.5"></div>
@@ -433,9 +433,9 @@
 
     <!-- GAME ENGINE & PEERJS SCRIPT -->
     <script>
-        const PREFIX = "ponkotsu-paint-online-p2p-v8-";
+        const PREFIX = "ponkotsu-paint-online-p2p-v9-";
 
-        // 分かりづらいお題を排した250題
+        // 厳選250題
         const QUESTION_TOPICS = [
             "かつら", "かまぼこ", "けんだま", "チェス", "納豆", "サイコロ", "ポニーテール", "駐車場", "高速道路", "金メダル", "ポスト", "釣り", "結婚式",
             "太陽", "メガネ", "自転車", "雪だるま", "時計", "車", "リンゴ", "ドラえもん", "信号機", "サッカーボール", "飛行機",
@@ -478,6 +478,7 @@
             timeLimit: 60,
             timeRemaining: 60,
             players: {},
+            turnOrder: [], // ランダム化された回答者順のIDリスト
             submittedDrawings: {},
             presentationQueue: [],
             currentPresIndex: 0,
@@ -770,7 +771,7 @@
                 myId = id;
                 roomData.hostId = myId;
                 roomData.players = {
-                    [myId]: { id: myId, name: myName, score: 0, isHost: true, order: 0 }
+                    [myId]: { id: myId, name: myName, score: 0, isHost: true }
                 };
                 roomData.logs = [];
                 
@@ -868,8 +869,7 @@
                     return;
                 }
                 connections[conn.peer] = conn;
-                const orderIdx = Object.keys(roomData.players).length;
-                roomData.players[data.id] = { id: data.id, name: data.name, score: 0, isHost: false, order: orderIdx };
+                roomData.players[data.id] = { id: data.id, name: data.name, score: 0, isHost: false };
                 broadcastState();
             } else if (data.type === 'SUBMIT_DRAWING') {
                 roomData.submittedDrawings[data.id] = { image: data.image, strokeCount: data.strokeCount };
@@ -903,17 +903,15 @@
 
                 renderRoomState();
             } else if (data.type === 'TIME_EXPIRED_SUBMIT') {
-                // 時間切れ時、自分の手元のキャンバス状態を自動送信
                 autoSubmitCurrentCanvas();
             } else if (data.type === 'ERROR') {
                 alert(data.message);
             }
         }
 
-        // 時間切れ時に手元のキャンバスを自動提出
         function autoSubmitCurrentCanvas() {
-            if (roomData.answererId === myId) return; // 回答者は提出不要
-            if (roomData.submittedDrawings[myId]) return; // 提出済みならスルー
+            if (roomData.answererId === myId) return;
+            if (roomData.submittedDrawings[myId]) return;
 
             const imgData = canvas ? canvas.toDataURL() : '';
             const strokeCount = shapes.length;
@@ -934,6 +932,16 @@
 
         // --- GAME ENGINE (HOST) ---
 
+        // 配列をシャッフルするアルゴリズム (Fisher-Yates)
+        function shuffleArray(array) {
+            const arr = [...array];
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
         window.startGame = function() {
             playSound('tap');
             if (!isHost) return;
@@ -944,6 +952,8 @@
                 return;
             }
 
+            // 回答者の順番を完全にランダムにシャッフル
+            roomData.turnOrder = shuffleArray(playerIds);
             roomData.round = 1;
             roomData.maxRounds = playerIds.length;
             roomData.logs = [];
@@ -956,8 +966,8 @@
         function startNewRound() {
             stopTimer();
 
-            const playerIds = Object.keys(roomData.players);
-            roomData.answererId = playerIds[roomData.round - 1];
+            // ランダム化された順番から今回の回答者を選択
+            roomData.answererId = roomData.turnOrder[roomData.round - 1];
 
             const topic = QUESTION_TOPICS[Math.floor(Math.random() * QUESTION_TOPICS.length)];
             roomData.question = topic;
@@ -992,12 +1002,9 @@
                     stopTimer();
                     addLog(`⏱ 制限時間切れ！描かれている途中の作品を送信・提出します。`);
                     
-                    // 各クライアントに自身のキャンバスを送信するよう指示
                     Object.values(connections).forEach(c => c.send({ type: 'TIME_EXPIRED_SUBMIT' }));
-                    // ホスト自身も提出
                     autoSubmitCurrentCanvas();
 
-                    // 少し待って全員分をまとめて発表フェーズへ移行
                     setTimeout(() => {
                         processStartPresentationPhase();
                     }, 800);
@@ -1013,7 +1020,6 @@
             }
         }
 
-        // お題チェンジの処理
         window.requestTopicChange = function() {
             playSound('tap');
             if (roomData.answererId === myId) return;
@@ -1054,16 +1060,16 @@
                 queue.push({
                     id: pId,
                     strokeCount: data.strokeCount,
-                    image: data.image,
-                    order: roomData.players[pId].order
+                    image: data.image
                 });
             });
 
+            // 画数が少ない順、同数の場合はランダム順に並び替え
             queue.sort((a, b) => {
                 if (a.strokeCount !== b.strokeCount) {
                     return a.strokeCount - b.strokeCount;
                 }
-                return a.order - b.order;
+                return Math.random() - 0.5;
             });
 
             roomData.presentationQueue = queue;
@@ -1197,7 +1203,7 @@
             const isHostUser = roomData.hostId === myId;
             const isAnswerer = roomData.answererId === myId;
 
-            // スコア一覧（文字サイズ拡大・視認性強化）
+            // スコア一覧
             const scoreListEl = document.getElementById('headerScoreList');
             if (scoreListEl) {
                 scoreListEl.innerHTML = '';
@@ -1554,6 +1560,7 @@
             roomData.currentPresIndex = 0;
             roomData.lastRoundResult = null;
             roomData.topicChangeVotes = [];
+            roomData.turnOrder = [];
             roomData.logs = [];
             broadcastState();
         }
