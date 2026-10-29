@@ -155,15 +155,26 @@
                     </button>
                 </div>
 
-                <!-- ホスト専用：ルール設定（制限時間設定） -->
-                <div id="hostSettingsBox" class="hidden bg-slate-950/80 rounded-2xl p-4 border border-purple-500/30 space-y-2">
-                    <label class="block text-xs font-bold text-purple-300 uppercase tracking-wider">お絵かき制限時間（1ラウンドあたり）</label>
-                    <select id="timeLimitSelect" onchange="updateTimeLimitSetting(this.value)" class="w-full bg-slate-900 border border-purple-500/40 rounded-xl px-4 py-2.5 text-white font-bold focus:outline-none">
-                        <option value="60" selected>制限時間：1分 (おすすめ)</option>
-                        <option value="90">制限時間：1分半</option>
-                        <option value="120">制限時間：2分</option>
-                        <option value="0">制限時間：なし (無制限)</option>
-                    </select>
+                <!-- ホスト専用：ルール設定（制限時間 & 周回数設定） -->
+                <div id="hostSettingsBox" class="hidden bg-slate-950/80 rounded-2xl p-4 border border-purple-500/30 space-y-4">
+                    <div class="space-y-2">
+                        <label class="block text-xs font-bold text-purple-300 uppercase tracking-wider">お絵かき制限時間（1ラウンドあたり）</label>
+                        <select id="timeLimitSelect" onchange="updateTimeLimitSetting(this.value)" class="w-full bg-slate-900 border border-purple-500/40 rounded-xl px-4 py-2.5 text-white font-bold focus:outline-none">
+                            <option value="60" selected>制限時間：1分 (おすすめ)</option>
+                            <option value="90">制限時間：1分半</option>
+                            <option value="120">制限時間：2分</option>
+                            <option value="0">制限時間：なし (無制限)</option>
+                        </select>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label class="block text-xs font-bold text-purple-300 uppercase tracking-wider">ゲームの周回数（全員が回答者になる回数）</label>
+                        <select id="lapCountSelect" onchange="updateLapSetting(this.value)" class="w-full bg-slate-900 border border-purple-500/40 rounded-xl px-4 py-2.5 text-white font-bold focus:outline-none">
+                            <option value="1" selected>1周 (全員が1回ずつ回答者)</option>
+                            <option value="2">2周 (全員が2回ずつ回答者)</option>
+                            <option value="3">3周 (全員が3回ずつ回答者)</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div class="bg-slate-950/60 rounded-2xl p-4 border border-purple-500/20 text-center text-sm text-purple-100 space-y-1">
@@ -212,7 +223,7 @@
                     </div>
                 </div>
 
-                <!-- Scores Summary (大型化) -->
+                <!-- Scores Summary -->
                 <div class="border-t border-purple-500/20 pt-3">
                     <div class="text-[11px] font-bold text-purple-300 uppercase tracking-wider mb-2">現在の獲得スコア</div>
                     <div id="headerScoreList" class="flex flex-wrap gap-2.5"></div>
@@ -332,7 +343,7 @@
                 </div>
             </div>
 
-            <!-- SUB-VIEW D: ROUND RESULT (振り返り・全員の絵鑑賞画面) -->
+            <!-- SUB-VIEW D: ROUND RESULT -->
             <div id="subViewRoundResult" class="hidden glass-panel p-6 md:p-8 rounded-3xl border border-purple-500/30 text-center space-y-6">
                 <div id="roundResultBanner" class="space-y-2"></div>
 
@@ -397,7 +408,7 @@
                     🏆
                 </div>
                 <h2 class="text-4xl font-black text-amber-300">ゲーム終了！</h2>
-                <p class="text-sm text-purple-200/70">全員の回答者ターンが終了しました！最終結果の発表です！</p>
+                <p class="text-sm text-purple-200/70">設定された周回数が終了しました！最終結果の発表です！</p>
             </div>
 
             <div class="space-y-3 bg-slate-950/80 p-5 rounded-3xl border border-purple-500/20 text-left">
@@ -433,7 +444,7 @@
 
     <!-- GAME ENGINE & PEERJS SCRIPT -->
     <script>
-        const PREFIX = "ponkotsu-paint-online-p2p-v9-";
+        const PREFIX = "ponkotsu-paint-online-p2p-v10-";
 
         // 厳選250題
         const QUESTION_TOPICS = [
@@ -473,12 +484,13 @@
             status: 'LOBBY',
             round: 1,
             maxRounds: 0,
+            lapCount: 1, // 周回数設定
             answererId: "",
             question: "",
             timeLimit: 60,
             timeRemaining: 60,
             players: {},
-            turnOrder: [], // ランダム化された回答者順のIDリスト
+            turnOrder: [],
             submittedDrawings: {},
             presentationQueue: [],
             currentPresIndex: 0,
@@ -862,6 +874,12 @@
             broadcastState();
         };
 
+        window.updateLapSetting = function(val) {
+            if (!isHost) return;
+            roomData.lapCount = parseInt(val, 10);
+            broadcastState();
+        };
+
         function handleHostData(conn, data) {
             if (data.type === 'JOIN') {
                 if (roomData.status !== 'LOBBY') {
@@ -932,7 +950,6 @@
 
         // --- GAME ENGINE (HOST) ---
 
-        // 配列をシャッフルするアルゴリズム (Fisher-Yates)
         function shuffleArray(array) {
             const arr = [...array];
             for (let i = arr.length - 1; i > 0; i--) {
@@ -952,10 +969,15 @@
                 return;
             }
 
-            // 回答者の順番を完全にランダムにシャッフル
-            roomData.turnOrder = shuffleArray(playerIds);
+            // 周回数に合わせて順番リストを生成（例: 2周ならプレイヤーリストを2回分シャッフルして連結）
+            let fullOrder = [];
+            for (let i = 0; i < roomData.lapCount; i++) {
+                fullOrder = fullOrder.concat(shuffleArray(playerIds));
+            }
+
+            roomData.turnOrder = fullOrder;
             roomData.round = 1;
-            roomData.maxRounds = playerIds.length;
+            roomData.maxRounds = fullOrder.length;
             roomData.logs = [];
             
             playerIds.forEach(id => roomData.players[id].score = 0);
@@ -966,7 +988,6 @@
         function startNewRound() {
             stopTimer();
 
-            // ランダム化された順番から今回の回答者を選択
             roomData.answererId = roomData.turnOrder[roomData.round - 1];
 
             const topic = QUESTION_TOPICS[Math.floor(Math.random() * QUESTION_TOPICS.length)];
@@ -981,7 +1002,7 @@
             roomData.timeRemaining = roomData.timeLimit;
 
             resetLocalCanvas();
-            addLog(`=== ラウンド ${roomData.round} 開始 (回答者: ${roomData.players[roomData.answererId].name}) ===`);
+            addLog(`=== ラウンド ${roomData.round} / ${roomData.maxRounds} (回答者: ${roomData.players[roomData.answererId].name}) ===`);
             
             if (roomData.timeLimit > 0) {
                 startHostTimer();
@@ -1064,7 +1085,6 @@
                 });
             });
 
-            // 画数が少ない順、同数の場合はランダム順に並び替え
             queue.sort((a, b) => {
                 if (a.strokeCount !== b.strokeCount) {
                     return a.strokeCount - b.strokeCount;
@@ -1203,7 +1223,6 @@
             const isHostUser = roomData.hostId === myId;
             const isAnswerer = roomData.answererId === myId;
 
-            // スコア一覧
             const scoreListEl = document.getElementById('headerScoreList');
             if (scoreListEl) {
                 scoreListEl.innerHTML = '';
@@ -1215,7 +1234,6 @@
                 });
             }
 
-            // タイマー表示
             const timerContainer = document.getElementById('timerContainer');
             const timerDisplay = document.getElementById('timerDisplay');
             if (roomData.status === 'DRAWING' && roomData.timeLimit > 0) {
